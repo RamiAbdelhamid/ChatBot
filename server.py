@@ -54,13 +54,18 @@ from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 
 app = FastAPI()
+ALLOWED_ORIGINS = [
+    "https://chatbot-1-ao6t.onrender.com",  # واجهتك على Render
+    "http://localhost:5173",                 # للتطوير المحلي
+]
+
 app.add_middleware(
     CORSMiddleware,
-  allow_origins=["https://chatbot-80qm.onrender.com","http://localhost:5173"],
-  allow_methods=["*"],
-  allow_headers=["*"]
+    allow_origins=ALLOWED_ORIGINS,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    allow_credentials=False,
 )
-
 template = """
 Answer the question below.
 
