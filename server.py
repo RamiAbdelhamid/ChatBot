@@ -56,9 +56,9 @@ from langchain_core.prompts import ChatPromptTemplate
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # بدّلها لاحقًا لدومين React فقط
-    allow_methods=["*"],
-    allow_headers=["*"]
+  allow_origins=["https://chatbot-80qm.onrender.com"],
+  allow_methods=["*"],
+  allow_headers=["*"]
 )
 
 template = """

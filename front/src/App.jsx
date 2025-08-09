@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import './App.css';
 
-const API_URL = 'http://127.0.0.1:8000/chat';
+const API_URL = 'https://chatbot-80qm.onrender.com';
 
 function App() {
   const [userInput, setUserInput] = useState('');
@@ -22,7 +22,7 @@ function App() {
     setUserInput('');
 
     try {
-      const response = await fetch(API_URL, {
+      const response = await fetch(`${API_URL}/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
