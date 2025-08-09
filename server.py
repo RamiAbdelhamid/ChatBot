@@ -99,3 +99,5 @@ def chat(req: ChatRequest):
 def reset(session_id: str):
     sessions.pop(session_id, None)
     return {"ok": True}
+
+

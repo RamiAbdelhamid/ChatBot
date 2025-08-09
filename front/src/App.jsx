@@ -131,7 +131,7 @@ const StatusIndicator = ({ status, seconds, isLoading }) => {
 
 const Message = ({ type, content, isTyping = false }) => {
   const messageClass = `message message--${type}`;
-  
+
   if (isTyping) {
     return (
       <div className={`${messageClass} message--typing`}>
@@ -165,7 +165,7 @@ const EmptyState = () => (
 const MessagesList = ({ messages, isLoading }) => (
   <div className="messages-list">
     {messages.length === 0 && <EmptyState />}
-    
+
     {messages.map((message, index) => (
       <Message
         key={`${message.type}-${index}`}
@@ -173,23 +173,26 @@ const MessagesList = ({ messages, isLoading }) => (
         content={message.content}
       />
     ))}
-    
+
     {isLoading && (
-      <Message 
-        type={MESSAGE_TYPES.BOT} 
-        content="" 
-        isTyping={true} 
+      <Message
+        type={MESSAGE_TYPES.BOT}
+        content=""
+        isTyping={true}
       />
     )}
   </div>
 );
 
-const ChatInput = ({ 
-  value, 
-  onChange, 
-  onSubmit, 
-  disabled, 
-  placeholder = "Message AI ChatBot..." 
+const ChatInput = ({
+  value,
+  onChange,
+  onSubmit,
+  disabled,
+  isRecording,
+  onStartRecording,
+  onStopRecording,
+  placeholder = "Message AI ChatBot..."
 }) => {
   const handleKeyDown = (event) => {
     if (event.key === 'Enter' && !event.shiftKey) {
@@ -213,16 +216,35 @@ const ChatInput = ({
             placeholder={placeholder}
             disabled={disabled}
           />
-          <button
-            className="chat-input__button"
-            onClick={onSubmit}
-            disabled={!canSubmit}
-            aria-label="Send message"
-          >
-            <svg className="chat-input__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-            </svg>
-          </button>
+          <div className="chat-input__actions">
+            <button
+              className={`chat-input__button ${isRecording ? 'recording' : ''}`}
+              onClick={isRecording ? onStopRecording : onStartRecording}
+              disabled={disabled}
+              type="button"
+              aria-label={isRecording ? "Stop recording" : "Start recording"}
+            >
+              {isRecording ? (
+                <svg className="chat-input__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              ) : (
+                <svg className="chat-input__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                </svg>
+              )}
+            </button>
+            <button
+              className="chat-input__button"
+              onClick={onSubmit}
+              disabled={!canSubmit}
+              aria-label="Send message"
+            >
+              <svg className="chat-input__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -242,7 +264,47 @@ const Header = ({ appState, warmupSeconds, responseSeconds, isLoading }) => (
     />
   </header>
 );
+// UI Components
+const QuickActionButton = ({ text, onClick }) => {
+  return (
+    <button
+      className="quick-action-button"
+      onClick={() => onClick(text)}
+    >
+      {text}
+    </button>
+  );
+};
 
+
+const QuickActionsPanel = ({ onActionClick, selectedCategory }) => {
+  const quickActions = {
+    general: [
+      "📋 Make a plan",
+      "💡 Brainstorm",
+      "🗣️ Get advice",
+      "✍️ Help me write",
+      "📝 Summarize text",
+      "📊 Analyze data",
+    ],
+  };
+
+  const actionsToShow = selectedCategory === 'Make a plan'
+    ? quickActions.makePlan
+    : quickActions.general;
+
+  return (
+    <div className="quick-actions-panel">
+      {actionsToShow.map((action, index) => (
+        <QuickActionButton
+          key={index}
+          text={action}
+          onClick={onActionClick}
+        />
+      ))}
+    </div>
+  );
+};
 // Main App Component
 export default function App() {
   // State Management
@@ -250,6 +312,10 @@ export default function App() {
   const [inputValue, setInputValue] = useState('');
   const [appState, setAppState] = useState(APP_STATES.WARMING);
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const recognitionRef = useRef(null);
+
 
   // Custom Hooks
   const warmupTimer = useTimer();
@@ -258,7 +324,23 @@ export default function App() {
 
   // Refs
   const messagesEndRef = useRef(null);
+  const handleQuickActionClick = (actionText) => {
+    if (actionText === 'Make a plan') {
+      setSelectedCategory('Make a plan');
+    } else {
+      setInputValue(actionText);
+      setSelectedCategory(null);
+      // التركيز على حقل الإدخال تلقائياً
+      const inputField = document.querySelector('.chat-input__field');
+      if (inputField) {
+        inputField.focus();
+      }
+    }
+  };
 
+  const handleBackToMain = () => {
+    setSelectedCategory(null);
+  };
   // Effects
   useEffect(() => {
     initializeApp();
@@ -272,7 +354,7 @@ export default function App() {
   // Initialization
   const initializeApp = async () => {
     warmupTimer.startTimer();
-    
+
     try {
       await ChatService.checkHealth();
       setAppState(APP_STATES.READY);
@@ -330,6 +412,64 @@ export default function App() {
   const isAppReady = appState === APP_STATES.READY;
   const inputDisabled = !isAppReady || isLoading;
 
+
+  const startRecording = () => {
+    if ('webkitSpeechRecognition' in window) {
+      const recognition = new window.webkitSpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.lang = 'ar-SA'; // أو 'en-US' للإنجليزية
+
+      recognition.onstart = () => {
+        setIsRecording(true);
+      };
+
+      recognition.onresult = (event) => {
+        const transcript = Array.from(event.results)
+          .map(result => result[0])
+          .map(result => result.transcript)
+          .join('');
+        setInputValue(transcript);
+      };
+
+      recognition.onerror = (event) => {
+        console.error('Recognition error:', event.error);
+        addMessage(MESSAGE_TYPES.BOT, `Error: ${event.error}`);
+        setIsRecording(false);
+      };
+
+      recognition.onend = () => {
+        setIsRecording(false);
+      };
+
+      recognition.start();
+      recognitionRef.current = recognition;
+    } else {
+      addMessage(MESSAGE_TYPES.BOT, "Your browser doesn't support speech recognition");
+    }
+  };
+
+  // إيقاف التسجيل
+  const stopRecording = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      setIsRecording(false);
+    }
+  };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   return (
     <div className="app">
       <Header
@@ -342,8 +482,37 @@ export default function App() {
       <main className="app-main">
         <div className="chat-container">
           <div className="messages-container">
-            <MessagesList messages={messages} isLoading={isLoading} />
-            <div ref={messagesEndRef} />
+            {messages.length === 0 ? (
+              <>
+                <div className="empty-state">
+                  <div className="empty-state__icon">💬</div>
+                  <h2 className="empty-state__title">
+                    {selectedCategory ? selectedCategory : 'Ask anything'}
+                  </h2>
+
+                  {selectedCategory && (
+                    <button
+                      className="back-button"
+                      onClick={handleBackToMain}
+                    >
+                      ← Back to all categories
+                    </button>
+                  )}
+
+                  <div className="quick-actions-container">
+                    <QuickActionsPanel
+                      onActionClick={handleQuickActionClick}
+                      selectedCategory={selectedCategory}
+                    />
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <MessagesList messages={messages} isLoading={isLoading} />
+                <div ref={messagesEndRef} />
+              </>
+            )}
           </div>
         </div>
 
@@ -352,6 +521,9 @@ export default function App() {
           onChange={handleInputChange}
           onSubmit={handleSendMessage}
           disabled={inputDisabled}
+          isRecording={isRecording}
+          onStartRecording={startRecording}
+          onStopRecording={stopRecording}
         />
       </main>
     </div>
