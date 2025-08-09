@@ -1,216 +1,359 @@
-// import React, { useState } from 'react';
-// import './App.css';
-
-// const API_URL = 'http://127.0.0.1:8000/chat';
-
-// function App() {
-//   const [userInput, setUserInput] = useState('');
-//   const [messages, setMessages] = useState([]);
-//   const [isLoading, setIsLoading] = useState(false);
-
-//   // Handle sending the message
-//   const handleSend = async () => {
-//     if (!userInput.trim()) return;
-
-//     // Display user message
-//     setMessages(prevMessages => [
-//       ...prevMessages,
-//       { role: 'user', content: userInput }
-//     ]);
-
-//     setIsLoading(true);
-//     setUserInput('');
-
-//     try {
-//       const response = await fetch(API_URL, {
-//         method: 'POST',
-//         headers: {
-//           'Content-Type': 'application/json'
-//         },
-//         body: JSON.stringify({
-//           session_id: localStorage.getItem('sid') || 'user-session',
-//           message: userInput
-//         })
-//       });
-
-//       const data = await response.json();
-//       setMessages(prevMessages => [
-//         ...prevMessages,
-//         { role: 'bot', content: data.reply || 'No reply from bot.' }
-//       ]);
-//     } catch (error) {
-//       setMessages(prevMessages => [
-//         ...prevMessages,
-//         { role: 'bot', content: 'Error: ' + error.message }
-//       ]);
-//     } finally {
-//       setIsLoading(false);
-//     }
-//   };
-
-//   return (
-//     <div className="App">
-//       <header className="App-header">
-//         <h1>AI ChatBot</h1>
-//       </header>
-
-//       <div className="chat-container">
-//         <div className="chat-box">
-//           {messages.map((msg, index) => (
-//             <div
-//               key={index}
-//               className={`message ${msg.role === 'user' ? 'user' : 'bot'}`}
-//             >
-//               {msg.content}
-//             </div>
-//           ))}
-//           {isLoading && (
-//             <div className="message bot">…</div> // To indicate bot is typing
-//           )}
-//         </div>
-
-//         <div className="input-container">
-//           <input
-//             type="text"
-//             value={userInput}
-//             onChange={e => setUserInput(e.target.value)}
-//             onKeyDown={e => e.key === 'Enter' && handleSend()}
-//             placeholder="Type a message"
-//           />
-//           <button onClick={handleSend} disabled={isLoading}>
-//             Send
-//           </button>
-//         </div>
-//       </div>
-//     </div>
-//   );
-// }
-
-// export default App;
-
-
-
-
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import './App.css';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-
-function getSid() {
-  let sid = localStorage.getItem('sid');
-  if (!sid) {
-    sid = 's-' + Math.random().toString(36).slice(2);
-    localStorage.setItem('sid', sid);
+// Constants
+const API_CONFIG = {
+  BASE_URL: import.meta.env.VITE_API_URL || 'http://localhost:8000',
+  ENDPOINTS: {
+    HEALTH: '/health',
+    CHAT: '/chat'
   }
-  return sid;
-}
+};
 
-export default function App() {
-  const [userInput, setUserInput] = useState('');
-  const [messages, setMessages] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [ready, setReady] = useState(false);
+const MESSAGE_TYPES = {
+  USER: 'user',
+  BOT: 'bot'
+};
 
-  // مؤقتات
-  const [warmupSec, setWarmupSec] = useState(0);
-  const [responseSec, setResponseSec] = useState(0);
-  const warmupRef = useRef(null);
-  const respRef = useRef(null);
+const APP_STATES = {
+  WARMING: 'warming',
+  READY: 'ready',
+  LOADING: 'loading'
+};
 
-  // إحماء الخادم + تايمر الإحماء
-  useEffect(() => {
-    // ابدأ عدّاد الإحماء
-    warmupRef.current = setInterval(() => setWarmupSec(s => s + 1), 1000);
+// Custom Hooks
+const useTimer = () => {
+  const [seconds, setSeconds] = useState(0);
+  const timerRef = useRef(null);
 
-    (async () => {
-      try { await fetch(`${API_URL}/health`, { cache: 'no-store' }); }
-      catch {}
-      finally {
-        setReady(true);
-        clearInterval(warmupRef.current);
-        warmupRef.current = null;
-      }
-    })();
-
-    return () => {
-      if (warmupRef.current) clearInterval(warmupRef.current);
-      if (respRef.current) clearInterval(respRef.current);
-    };
+  const startTimer = useCallback(() => {
+    setSeconds(0);
+    timerRef.current = setInterval(() => {
+      setSeconds(prev => prev + 1);
+    }, 1000);
   }, []);
 
-  const handleSend = async () => {
-    if (!userInput.trim() || isLoading) return;
+  const stopTimer = useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
 
-    const msg = userInput;
-    setMessages(prev => [...prev, { role: 'user', content: msg }]);
-    setUserInput('');
-    setIsLoading(true);
+  const resetTimer = useCallback(() => {
+    stopTimer();
+    setSeconds(0);
+  }, [stopTimer]);
 
-    // ابدأ عدّاد وقت الاستجابة
-    setResponseSec(0);
-    respRef.current = setInterval(() => setResponseSec(s => s + 1), 1000);
+  return { seconds, startTimer, stopTimer, resetTimer };
+};
 
+const useSessionId = () => {
+  const getSessionId = useCallback(() => {
     try {
-      const res = await fetch(`${API_URL}/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: getSid(), message: msg })
-      });
-
-      if (!res.ok) {
-        const txt = await res.text();
-        throw new Error(`HTTP ${res.status} ${res.statusText}: ${txt}`);
+      let sessionId = localStorage.getItem('chatbot_session_id');
+      if (!sessionId) {
+        sessionId = 'session-' + Math.random().toString(36).slice(2) + Date.now();
+        localStorage.setItem('chatbot_session_id', sessionId);
       }
-
-      const data = await res.json();
-      setMessages(prev => [...prev, { role: 'bot', content: data?.reply ?? 'No reply from bot.' }]);
+      return sessionId;
     } catch (error) {
-      setMessages(prev => [...prev, { role: 'bot', content: 'Error: ' + error.message }]);
-    } finally {
-      setIsLoading(false);
-      if (respRef.current) { clearInterval(respRef.current); respRef.current = null; }
+      // Fallback if localStorage is not available
+      return 'session-' + Math.random().toString(36).slice(2) + Date.now();
+    }
+  }, []);
+
+  return { getSessionId };
+};
+
+// Service Layer
+class ChatService {
+  static async checkHealth() {
+    const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.HEALTH}`, {
+      cache: 'no-store'
+    });
+    return response.ok;
+  }
+
+  static async sendMessage(sessionId, message) {
+    const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.CHAT}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        session_id: sessionId,
+        message: message
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`HTTP ${response.status} ${response.statusText}: ${errorText}`);
+    }
+
+    const data = await response.json();
+    return data?.reply ?? 'No reply received from the chatbot.';
+  }
+}
+
+// UI Components
+const StatusIndicator = ({ status, seconds, isLoading }) => {
+  const getStatusConfig = () => {
+    switch (status) {
+      case APP_STATES.WARMING:
+        return {
+          text: `Warming up… ${seconds}s`,
+          hint: '(typical 20–60s)',
+          className: 'status-warming'
+        };
+      case APP_STATES.LOADING:
+        return {
+          text: `Thinking… ${seconds}s`,
+          hint: '',
+          className: 'status-thinking'
+        };
+      default:
+        return null;
     }
   };
 
+  const config = getStatusConfig();
+  if (!config) return null;
+
   return (
-    <div className="App">
-      <header className="App-header"><h1>AI ChatBot</h1></header>
+    <div className={`status-indicator ${config.className}`}>
+      <span className="status-text">{config.text}</span>
+      {config.hint && <span className="status-hint">{config.hint}</span>}
+    </div>
+  );
+};
 
-      <div className="chat-container">
-        {/* شريط حالة مع التايمر */}
-        {!ready && (
-          <div className="status">
-            Warming up… {warmupSec}s <span className="hint">(typical 20–60s)</span>
-          </div>
-        )}
-        {ready && isLoading && (
-          <div className="status">
-            Thinking… {responseSec}s
-          </div>
-        )}
-
-        <div className="chat-box">
-          {messages.map((msg, i) => (
-            <div key={i} className={`message ${msg.role === 'user' ? 'user' : 'bot'}`}>
-              {msg.content}
-            </div>
-          ))}
-          {isLoading && <div className="message bot">…</div>}{/* typing */}
+const Message = ({ type, content, isTyping = false }) => {
+  const messageClass = `message message--${type}`;
+  
+  if (isTyping) {
+    return (
+      <div className={`${messageClass} message--typing`}>
+        <div className="typing-indicator">
+          <div className="typing-dot"></div>
+          <div className="typing-dot"></div>
+          <div className="typing-dot"></div>
         </div>
+      </div>
+    );
+  }
 
-        <div className="input-container">
+  return (
+    <div className={messageClass}>
+      {type === MESSAGE_TYPES.BOT && <div className="message__avatar">🤖</div>}
+      <div className="message__content">{content}</div>
+    </div>
+  );
+};
+
+const EmptyState = () => (
+  <div className="empty-state">
+    <div className="empty-state__icon">💬</div>
+    <h2 className="empty-state__title">How can I help you today?</h2>
+    <p className="empty-state__subtitle">
+      Start a conversation by typing a message below.
+    </p>
+  </div>
+);
+
+const MessagesList = ({ messages, isLoading }) => (
+  <div className="messages-list">
+    {messages.length === 0 && <EmptyState />}
+    
+    {messages.map((message, index) => (
+      <Message
+        key={`${message.type}-${index}`}
+        type={message.type}
+        content={message.content}
+      />
+    ))}
+    
+    {isLoading && (
+      <Message 
+        type={MESSAGE_TYPES.BOT} 
+        content="" 
+        isTyping={true} 
+      />
+    )}
+  </div>
+);
+
+const ChatInput = ({ 
+  value, 
+  onChange, 
+  onSubmit, 
+  disabled, 
+  placeholder = "Message AI ChatBot..." 
+}) => {
+  const handleKeyDown = (event) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      onSubmit();
+    }
+  };
+
+  const canSubmit = value.trim() && !disabled;
+
+  return (
+    <div className="chat-input">
+      <div className="chat-input__container">
+        <div className="chat-input__wrapper">
           <input
             type="text"
-            value={userInput}
-            onChange={e => setUserInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleSend()}
-            placeholder="Type a message"
+            className="chat-input__field"
+            value={value}
+            onChange={onChange}
+            onKeyDown={handleKeyDown}
+            placeholder={placeholder}
+            disabled={disabled}
           />
-          <button onClick={handleSend} disabled={isLoading || !ready}>
-            {ready ? (isLoading ? `Sending… ${responseSec}s` : 'Send') : `Warming… ${warmupSec}s`}
+          <button
+            className="chat-input__button"
+            onClick={onSubmit}
+            disabled={!canSubmit}
+            aria-label="Send message"
+          >
+            <svg className="chat-input__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+            </svg>
           </button>
         </div>
       </div>
+    </div>
+  );
+};
+
+const Header = ({ appState, warmupSeconds, responseSeconds, isLoading }) => (
+  <header className="app-header">
+    <h1 className="app-header__title">
+      <span className="app-header__icon">🤖</span>
+      AI ChatBot
+    </h1>
+    <StatusIndicator
+      status={appState}
+      seconds={appState === APP_STATES.WARMING ? warmupSeconds : responseSeconds}
+      isLoading={isLoading}
+    />
+  </header>
+);
+
+// Main App Component
+export default function App() {
+  // State Management
+  const [messages, setMessages] = useState([]);
+  const [inputValue, setInputValue] = useState('');
+  const [appState, setAppState] = useState(APP_STATES.WARMING);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Custom Hooks
+  const warmupTimer = useTimer();
+  const responseTimer = useTimer();
+  const { getSessionId } = useSessionId();
+
+  // Refs
+  const messagesEndRef = useRef(null);
+
+  // Effects
+  useEffect(() => {
+    initializeApp();
+    return cleanup;
+  }, []);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  // Initialization
+  const initializeApp = async () => {
+    warmupTimer.startTimer();
+    
+    try {
+      await ChatService.checkHealth();
+      setAppState(APP_STATES.READY);
+    } catch (error) {
+      console.warn('Health check failed, but continuing...', error);
+      setAppState(APP_STATES.READY);
+    } finally {
+      warmupTimer.stopTimer();
+    }
+  };
+
+  const cleanup = () => {
+    warmupTimer.stopTimer();
+    responseTimer.stopTimer();
+  };
+
+  // Message Management
+  const addMessage = useCallback((type, content) => {
+    setMessages(prev => [...prev, { type, content, timestamp: Date.now() }]);
+  }, []);
+
+  const handleSendMessage = async () => {
+    const message = inputValue.trim();
+    if (!message || isLoading || appState !== APP_STATES.READY) return;
+
+    // Add user message
+    addMessage(MESSAGE_TYPES.USER, message);
+    setInputValue('');
+    setIsLoading(true);
+    responseTimer.startTimer();
+
+    try {
+      const sessionId = getSessionId();
+      const botResponse = await ChatService.sendMessage(sessionId, message);
+      addMessage(MESSAGE_TYPES.BOT, botResponse);
+    } catch (error) {
+      console.error('Chat error:', error);
+      addMessage(MESSAGE_TYPES.BOT, `Error: ${error.message}`);
+    } finally {
+      setIsLoading(false);
+      responseTimer.stopTimer();
+    }
+  };
+
+  // Utility Functions
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const handleInputChange = (event) => {
+    setInputValue(event.target.value);
+  };
+
+  // Computed Values
+  const isAppReady = appState === APP_STATES.READY;
+  const inputDisabled = !isAppReady || isLoading;
+
+  return (
+    <div className="app">
+      <Header
+        appState={appState}
+        warmupSeconds={warmupTimer.seconds}
+        responseSeconds={responseTimer.seconds}
+        isLoading={isLoading}
+      />
+
+      <main className="app-main">
+        <div className="chat-container">
+          <div className="messages-container">
+            <MessagesList messages={messages} isLoading={isLoading} />
+            <div ref={messagesEndRef} />
+          </div>
+        </div>
+
+        <ChatInput
+          value={inputValue}
+          onChange={handleInputChange}
+          onSubmit={handleSendMessage}
+          disabled={inputDisabled}
+        />
+      </main>
     </div>
   );
 }
