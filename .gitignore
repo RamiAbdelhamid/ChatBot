@@ -2,7 +2,10 @@
 __pycache__/
 *.py[codz]
 *$py.class
-
+*.pyc
+.env
+venv/
+chatbot/
 # C extensions
 *.so
 
