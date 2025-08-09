@@ -47,7 +47,7 @@ prompt = ChatPromptTemplate.from_template(template)
 
 # Model selection via env; defaults to a safe Groq model.
 # IMPORTANT: GROQ_API_KEY must be set in the environment.
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama3-70b-8192")
+GROQ_MODEL = os.getenv("GROQ_MODEL")
 llm = ChatGroq(model=GROQ_MODEL, temperature=0)  # Reads GROQ_API_KEY automatically
 
 # LangChain pipeline: prompt -> LLM
