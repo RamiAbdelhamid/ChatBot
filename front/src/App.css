@@ -78,3 +78,5 @@ button {
 button:disabled {
   background-color: #ccc;
 }
+.status { margin: 6px 0 10px; font-size: 0.9rem; color: #333 }
+.status .hint { opacity: .6; margin-left: 6px }
